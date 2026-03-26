@@ -14,10 +14,6 @@ class PrepareResult(Enum):
     SUCCESS = 1
     UNRECOGNIZED_STATEMENT = 2
 
-class StatementType(Enum):
-    INSERT = 1
-    SELECT = 2
-
 class Statement:
     def __init__(self):
         self.type = None
@@ -28,15 +24,37 @@ def do_meta_command(user_input):
     else:
         return MetaCommandResult.UNRECOGNIZED_COMMAND
 
-def prepare_statement(user_input, statement):
+def prepare_statement(user_input):
+    parts=user_input.split()
+    print(parts)
     if user_input.startswith("insert"):
-        statement.type = StatementType.INSERT
-        return PrepareResult.SUCCESS
-    if user_input == "select":
-        statement.type = StatementType.SELECT
-        return PrepareResult.SUCCESS
+        if len(parts)<4:
+            return "SYNTAX ERROR",None
+        try:
+            row_to_insert=(int(parts[1]),parts[2],parts[3])
+            return "SUCCESS", {"type": "insert", "data": row_to_insert}
+        except ValueError:
+            return "SYNTAX_ERROR", None
+    if parts[0] == "select":
+        return "SUCCESS", {"type": "select"}
     
-    return PrepareResult.UNRECOGNIZED_STATEMENT
+    return "UNRECOGNIZED", None
+
+def execute_insert(statement, table):
+    if table.num_rows >= TABLE_MAX_ROWS:
+        return "TABLE_FULL"
+    
+    page, offset = table.row_slots(table.num_rows)
+    serialize_row(statement["data"], page, offset)
+    table.num_rows += 1
+    return "SUCCESS"
+
+def execute_select(table):
+    for i in range(table.num_rows):
+        page, offset = table.row_slots(i)
+        row = deserialize_row(page, offset)
+        print(f"({row[0]}, {row[1]}, {row[2]})")
+    return "SUCCESS"
 
 def print_prompt():
     print("db > ", end="", flush=True)
@@ -62,13 +80,8 @@ def deserialize_row(source_bytearray, offset):
     return (id_val, username_bytes.decode('utf-8').strip('\x00'), email_bytes.decode('utf-8').strip('\x00'))
 
 
-def execute_statement(statement):
-    if statement.type == StatementType.INSERT:
-        print("This is where we would do an insert.")
-    elif statement.type == StatementType.SELECT:
-        print("This is where we would do a select.")
-
 def main():
+    table=Table()
     while True:
         print_prompt()
         user_input = read_input()
@@ -82,16 +95,26 @@ def main():
                 continue
 
         # 2. Prepare Statement
-        statement = Statement()
-        result = prepare_statement(user_input, statement)
+        result_code,statement = prepare_statement(user_input)
         
-        if result == PrepareResult.UNRECOGNIZED_STATEMENT:
+        if result_code == "SYNTAX_ERROR":
+            print("Syntax error. Could not parse statement.")
+            continue
+        elif result_code == "UNRECOGNIZED":
             print(f"Unrecognized keyword at start of '{user_input}'.")
             continue
         
-        # 3. Execute Statement
-        execute_statement(statement)
-        print("Executed.")
+# Execution
+        if statement["type"] == "insert":
+            result = execute_insert(statement, table)
+            if result == "TABLE_FULL":
+                print("Error: Table full.")
+            else:
+                print("Executed.")
+        
+        elif statement["type"] == "select":
+            execute_select(table)
+            print("Executed.")
 
 if __name__ == "__main__":
     main()
