@@ -24,21 +24,39 @@ def do_meta_command(user_input):
     else:
         return MetaCommandResult.UNRECOGNIZED_COMMAND
 
-def prepare_statement(user_input):
+def prepare_insert(user_input):
     parts=user_input.split()
-    print(parts)
-    if user_input.startswith("insert"):
-        if len(parts)<4:
-            return "SYNTAX ERROR",None
-        try:
-            row_to_insert=(int(parts[1]),parts[2],parts[3])
-            return "SUCCESS", {"type": "insert", "data": row_to_insert}
-        except ValueError:
-            return "SYNTAX_ERROR", None
-    if parts[0] == "select":
-        return "SUCCESS", {"type": "select"}
+    if len(parts)!=4:
+        return "PREPARE_SYNTAX_ERROR",None
+    try:
+        id_val=int(parts[1])
+    except ValueError:
+        return "PREPARE_SYNTAX_ERROR", None
+        
+    if id_val < 0:
+        return "PREPARE_NEGATIVE_ID", None
+
+    username=parts[2]
+    email=parts[3]
+    username_bytes = username.encode('utf-8')
+    email_bytes = email.encode('utf-8')
     
-    return "UNRECOGNIZED", None
+    if len(username_bytes) > COLUMN_USERNAME_SIZE:
+        return "PREPARE_STRING_TOO_LONG", None
+    if len(email_bytes) > COLUMN_EMAIL_SIZE:
+        return "PREPARE_STRING_TOO_LONG", None
+        
+    # We can pass the original strings forward since our serialize_row 
+    # function handles the encoding, or pass the bytes to avoid double-encoding.
+    return "PREPARE_SUCCESS", {"type": "insert", "data": (id_val, username, email)}
+
+def prepare_statement(user_input):
+    if user_input.startswith("insert"):
+        return prepare_insert(user_input)
+    if user_input == "select":
+        return "PREPARE_SUCCESS", {"type": "select"}
+
+    return "PREPARE_UNRECOGNIZED_STATEMENT", None
 
 def execute_insert(statement, table):
     if table.num_rows >= TABLE_MAX_ROWS:
@@ -97,10 +115,17 @@ def main():
         # 2. Prepare Statement
         result_code,statement = prepare_statement(user_input)
         
-        if result_code == "SYNTAX_ERROR":
+        
+        if result_code == "PREPARE_SYNTAX_ERROR":
             print("Syntax error. Could not parse statement.")
             continue
-        elif result_code == "UNRECOGNIZED":
+        elif result_code == "PREPARE_STRING_TOO_LONG":
+            print("String is too long.")
+            continue
+        elif result_code == "PREPARE_NEGATIVE_ID":
+            print("ID must be positive.")
+            continue
+        elif result_code == "PREPARE_UNRECOGNIZED_STATEMENT":
             print(f"Unrecognized keyword at start of '{user_input}'.")
             continue
         
