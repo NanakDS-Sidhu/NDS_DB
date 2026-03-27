@@ -2,6 +2,7 @@ import struct
 from Pager import Pager
 import sys
 import os
+from Cursor import Cursor
 
 COLUMN_USERNAME_SIZE = 32
 COLUMN_EMAIL_SIZE = 255
@@ -19,13 +20,12 @@ class Table:
         self.pager=pager
         self.num_rows=num_rows
 
-    def row_slot(self,row_num):
-        page_num=row_num//ROWS_PER_PAGE
-        page=self.pager.get_page(page_num)
-
-        row_offset = row_num % ROWS_PER_PAGE
-        byte_offset = row_offset * ROW_SIZE
-        return page , byte_offset
+    def table_start(self):
+        is_end = (self.num_rows ==0) 
+        return Cursor(table=self,row_num=0,end_of_table=is_end)
+    def table_end(self):
+        return Cursor(table=self,row_num=self.num_rows,end_of_table=True)
+        
 
 def db_open(filename):
     pager=Pager(filename)

@@ -8,7 +8,7 @@ def run_script(commands):
     and returns the output. Now it includes the filename argument!
     """
     process = subprocess.Popen(
-        ["python", "db.py", "test.db"], # Added "test.db" argument
+        ["python3", "REPL.py", "test.db"], # Added "test.db" argument
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         text=True

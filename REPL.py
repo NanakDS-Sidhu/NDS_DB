@@ -63,16 +63,20 @@ def execute_insert(statement, table):
     if table.num_rows >= TABLE_MAX_ROWS:
         return "TABLE_FULL"
     
-    page, offset = table.row_slot(table.num_rows)
+    cursor=table.table_end()
+    page, offset = cursor.value()
     serialize_row(statement["data"], page, offset)
     table.num_rows += 1
     return "SUCCESS"
 
 def execute_select(table):
-    for i in range(table.num_rows):
-        page, offset = table.row_slot(i)
+    cursor= table.table_start()
+    while not cursor.end_of_table:
+        page, offset = cursor.value()
         row = deserialize_row(page, offset)
         print(f"({row[0]}, {row[1]}, {row[2]})")
+        cursor.advance()
+ 
     return "SUCCESS"
 
 def print_prompt():
