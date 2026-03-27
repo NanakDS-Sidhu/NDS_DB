@@ -18,13 +18,14 @@ class Statement:
     def __init__(self):
         self.type = None
 
-def do_meta_command(user_input):
+def do_meta_command(user_input,table):
     if user_input == ".exit":
+        db_close(table)
         sys.exit(0)
     else:
         return MetaCommandResult.UNRECOGNIZED_COMMAND
 
-def prepare_insert(user_input):
+def prepare_insert(user_input):  
     parts=user_input.split()
     if len(parts)!=4:
         return "PREPARE_SYNTAX_ERROR",None
@@ -62,14 +63,14 @@ def execute_insert(statement, table):
     if table.num_rows >= TABLE_MAX_ROWS:
         return "TABLE_FULL"
     
-    page, offset = table.row_slots(table.num_rows)
+    page, offset = table.row_slot(table.num_rows)
     serialize_row(statement["data"], page, offset)
     table.num_rows += 1
     return "SUCCESS"
 
 def execute_select(table):
     for i in range(table.num_rows):
-        page, offset = table.row_slots(i)
+        page, offset = table.row_slot(i)
         row = deserialize_row(page, offset)
         print(f"({row[0]}, {row[1]}, {row[2]})")
     return "SUCCESS"
@@ -99,13 +100,18 @@ def deserialize_row(source_bytearray, offset):
 
 
 def main():
-    table=Table()
+    if len(sys.argv) < 2:
+        print("Must supply a database filename.")
+        sys.exit(1)
+
+    file_name=sys.argv[1]
+    table=db_open(file_name)  
     while True:
         print_prompt()
         user_input = read_input()
 
         if user_input.startswith('.'):
-            result = do_meta_command(user_input)
+            result = do_meta_command(user_input,table)
             if result == MetaCommandResult.SUCCESS:
                 continue
             elif result == MetaCommandResult.UNRECOGNIZED_COMMAND:
