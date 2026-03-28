@@ -17,6 +17,11 @@ class Pager:
         self.file_descriptor=os.open(filename,os.O_RDWR | os.O_CREAT)
 
         self.file_length=os.lseek(self.file_descriptor,0,os.SEEK_END)
+        if self.file_length %PAGE_SIZE!=0:
+            print("Db file is not a whole number of pages. Corrupt file.")
+            sys.exit(1)
+        
+        self.num_pages=self.file_length // PAGE_SIZE
         self.pages=[None]*TABLE_MAX_PAGES
     
     def get_page(self,page_num):
@@ -26,17 +31,17 @@ class Pager:
         
         if self.pages[page_num] is None:
             page=bytearray(PAGE_SIZE)
-            num_pages=self.file_length//PAGE_SIZE
-
-            if self.file_length%PAGE_SIZE != 0:
-                num_pages+=1
-            
-            if page_num < num_pages:
+        
+            if page_num < self.num_pages:
                 os.lseek(self.file_descriptor,page_num*PAGE_SIZE,os.SEEK_SET)
                 bytes_read=os.read(self.file_descriptor,PAGE_SIZE)
                 page[:len(bytes_read)]=bytes_read
             
             self.pages[page_num]=page
+
+            if page_num >= page.num_pages:
+                self.num_pages=page_num+1
+
         return self.pages[page_num]
 
     def pager_flush(self,page_num,size):

@@ -18,13 +18,30 @@ class Statement:
     def __init__(self):
         self.type = None
 
-def do_meta_command(user_input,table):
+def do_meta_command(user_input, table):
     if user_input == ".exit":
         db_close(table)
         sys.exit(0)
+    elif user_input == ".constants":
+        print(f"ROW_SIZE: {ROW_SIZE}")
+        print(f"COMMON_NODE_HEADER_SIZE: {COMMON_NODE_HEADER_SIZE}")
+        print(f"LEAF_NODE_HEADER_SIZE: {LEAF_NODE_HEADER_SIZE}")
+        print(f"LEAF_NODE_CELL_SIZE: {LEAF_NODE_CELL_SIZE}")
+        print(f"LEAF_NODE_SPACE_FOR_CELLS: {LEAF_NODE_SPACE_FOR_CELLS}")
+        print(f"LEAF_NODE_MAX_CELLS: {LEAF_NODE_MAX_CELLS}")
+        return "META_COMMAND_SUCCESS"
+    elif user_input == ".btree":
+        print("Tree:")
+        root_node = table.pager.get_page(0)
+        num_cells = get_leaf_node_num_cells(root_node)
+        print(f"leaf (size {num_cells})")
+        for i in range(num_cells):
+            key = get_leaf_node_key(root_node, i)
+            print(f"  - {i} : {key}")
+        return "META_COMMAND_SUCCESS"
     else:
-        return MetaCommandResult.UNRECOGNIZED_COMMAND
-
+        return "META_COMMAND_UNRECOGNIZED_COMMAND"
+    
 def prepare_insert(user_input):  
     parts=user_input.split()
     if len(parts)!=4:
@@ -59,15 +76,41 @@ def prepare_statement(user_input):
 
     return "PREPARE_UNRECOGNIZED_STATEMENT", None
 
-def execute_insert(statement, table):
-    if table.num_rows >= TABLE_MAX_ROWS:
-        return "TABLE_FULL"
+def leaf_node_insert(cursor,key,value_tuple):
+    node=cursor.table.pager.get_page(cursor.page_num)
+    num_cells = get_leaf_node_num_cells(node)
+
+    if num_cells >= LEAF_NODE_CELL_SIZE:
+        print("Need to implement splitting a leaf node.")
+        sys.exit(1)
     
-    cursor=table.table_end()
-    page, offset = cursor.value()
-    serialize_row(statement["data"], page, offset)
-    table.num_rows += 1
+    if cursor.cell_num < num_cells:
+        for i in range(num_cells,cursor.cell_num ,-1):
+            src_offset= leaf_node_cell_offset(i-1)
+            dest_offset = leaf_node_cell_offset(i)
+            node[dest_offset : dest_offset + LEAF_NODE_CELL_SIZE] = node[src_offset : src_offset + LEAF_NODE_CELL_SIZE]
+
+    # Update cell count, write the key, and write the value
+    set_leaf_node_num_cells(node, num_cells + 1)
+    set_leaf_node_key(node, cursor.cell_num, key)
+    
+    # serialize_row writes the value to the specific offset
+    _, value_offset = cursor.value()
+    serialize_row(value_tuple, node, value_offset)
+
+def execute_insert(statement, table):
+    node = table.pager.get_page(table.root_page_num)
+    if get_leaf_node_num_cells(node) >= LEAF_NODE_MAX_CELLS:
+        return "TABLE_FULL"
+
+    row_data = statement["data"]
+    key_to_insert = row_data # ID is the key
+    
+    cursor = table.table_end()
+    leaf_node_insert(cursor, key_to_insert, row_data)
+    
     return "SUCCESS"
+
 
 def execute_select(table):
     cursor= table.table_start()

@@ -2,6 +2,7 @@ import struct
 from Pager import Pager
 import sys
 import os
+from b_tree_helpers import *
 from Cursor import Cursor
 
 COLUMN_USERNAME_SIZE = 32
@@ -18,36 +19,37 @@ TABLE_MAX_ROWS = ROWS_PER_PAGE * TABLE_MAX_PAGES
 class Table:
     def __init__(self,pager,num_rows):
         self.pager=pager
-        self.num_rows=num_rows
+        self.root_page_num=0
 
     def table_start(self):
-        is_end = (self.num_rows ==0) 
-        return Cursor(table=self,row_num=0,end_of_table=is_end)
+        root_node = self.pager.get_page(self.root_page_num)
+        num_cells=get_leaf_node_num_cells(root_node)
+        return Cursor(table=self, page_num =self.root_page_num, cell_num = 0, end_of_table=(num_cells==0))
+
     def table_end(self):
-        return Cursor(table=self,row_num=self.num_rows,end_of_table=True)
+        root_node = self.pager.get_page(self.root_page_num)
+        num_cells=get_leaf_node_num_cells(root_node)
+        return Cursor(table=self, page_num =self.root_page_num, cell_num = num_cells, end_of_table=True)
         
-
 def db_open(filename):
-    pager=Pager(filename)
-    num_rows=pager.file_length // ROW_SIZE
-    return Table(pager,num_rows)
+    pager = Pager(filename)
+    table = Table(pager)
 
+    if pager.num_pages == 0:
+        # New database file. Initialize page 0 as a leaf node.
+        root_node = pager.get_page(0)
+        initialize_leaf_node(root_node)
+
+    return table
 
 def db_close(table):
-    pager=table.pager
-    num_full_pages= table.num_rows // ROWS_PER_PAGE
-
-    for i in range(num_full_pages):
+    pager = table.pager
+    
+    # Only flush pages we actually allocated/touched
+    for i in range(pager.num_pages):
         if pager.pages[i] is None:
             continue
-        pager.page_flush(i,PAGE_SIZE)
-        pager.pages[i]=None
-
-    num_addition_rows=table.num_rows%ROWS_PER_PAGE
-    if num_addition_rows > 0:
-        page_num=num_full_pages
-        if pager.pages[page_num] is not None:
-            pager.pager_flush(page_num , num_addition_rows * ROW_SIZE)
-            pager.pages[page_num] = None
+        pager.pager_flush(i)
+        pager.pages[i] = None
 
     os.close(pager.file_descriptor)
